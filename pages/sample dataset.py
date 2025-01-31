@@ -128,8 +128,4 @@ st.sidebar.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Add a footer with a custom message
-st.markdown(
-    "<footer style='text-align: center; font-size: 14px; color: gray;'>Developed by Your Name | Your Organization</footer>",
-    unsafe_allow_html=True
-)
+
