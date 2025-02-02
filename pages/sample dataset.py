@@ -42,7 +42,8 @@ for col in columns_to_display.keys():
     new_row[col] = st.sidebar.text_input(col, "")
 
 if st.sidebar.button("Add Row"):
-    dataset = dataset.append(new_row, ignore_index=True)
+    new_row_df = pd.DataFrame([new_row])  # Convert new_row to DataFrame
+    dataset = pd.concat([dataset, new_row_df], ignore_index=True)  # Use concat instead of append
     dataset.to_csv(csv_file, index=False)
     st.sidebar.success("✅ Row added successfully!")
 
@@ -127,5 +128,3 @@ st.sidebar.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-
-
