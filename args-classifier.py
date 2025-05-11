@@ -29,10 +29,11 @@ def extract_features(data):
         'BetweennessCentrality', 'ClosenessCentrality', 'Eccentricity',
         'NeighborhoodConnectivity', 'TopologicalCoefficient'
     ]
-    # Ensure required columns are present
-    if not all(col in data.columns for col in required_columns):
-        missing = [col for col in required_columns if col not in data.columns]
-        raise ValueError(f"Missing required columns in uploaded file: {missing}")
+    # Check for missing columns before attempting extraction
+    missing = [col for col in required_columns if col not in data.columns]
+    if missing:
+        st.error(f"Missing required columns in uploaded file: {missing}")
+        return None
     return data[required_columns]
 
 # Mobility Analyzer Class
@@ -45,16 +46,34 @@ class ARGMobilityAnalyzer:
         self.mobility_potential = self._calculate_mobility_potential()
 
     def _calculate_mobility_potential(self):
+        # Check for required columns before calculation
+        required_columns = ['CommunicationEfficiency', 'Degree', 'BetweennessCentrality', 
+                           'ClusteringCoefficient', 'PositiveTopologyCoefficient', 'NeighborhoodConnectivity']
+        
+        missing = [col for col in required_columns if col not in self.arg_data.columns]
+        if missing:
+            st.error(f"Missing required columns for mobility analysis: {missing}")
+            # Return default values if columns are missing
+            return pd.Series([0.5] * len(self.arg_data))
+        
+        # Avoid division by zero errors
+        max_degree = max(self.arg_data['Degree'].max(), 1)
+        max_betweenness = max(self.arg_data['BetweennessCentrality'].max(), 1)
+        max_neighborhood = max(self.arg_data['NeighborhoodConnectivity'].max(), 1)
+        
         mobility_scores = (
             0.2 * self.arg_data['CommunicationEfficiency'] +
-            0.15 * (self.arg_data['Degree'] / self.arg_data['Degree'].max()) +
-            0.2 * (self.arg_data['BetweennessCentrality'] /
-                   self.arg_data['BetweennessCentrality'].max()) +
+            0.15 * (self.arg_data['Degree'] / max_degree) +
+            0.2 * (self.arg_data['BetweennessCentrality'] / max_betweenness) +
             0.15 * self.arg_data['ClusteringCoefficient'] +
             0.15 * self.arg_data['PositiveTopologyCoefficient'] +
-            0.15 * (self.arg_data['NeighborhoodConnectivity'] /
-                    self.arg_data['NeighborhoodConnectivity'].max())
+            0.15 * (self.arg_data['NeighborhoodConnectivity'] / max_neighborhood)
         )
+        
+        # Handle case where all scores are the same (prevents division by zero)
+        if mobility_scores.max() == mobility_scores.min():
+            return pd.Series([0.5] * len(mobility_scores))
+        
         return (mobility_scores - mobility_scores.min()) / (mobility_scores.max() - mobility_scores.min())
 
     def analyze_mobility(self):
@@ -181,8 +200,19 @@ def main():
         uploaded_file = st.file_uploader("📤 Upload CSV file", type=['csv'])
         if uploaded_file is not None:
             try:
-                st.session_state.df = pd.read_csv(uploaded_file)
+                df = pd.read_csv(uploaded_file)
+                
+                # Check for required columns and show warnings if missing
+                required_columns = list(COLUMN_DESCRIPTIONS.keys())
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                
+                if missing_columns:
+                    st.warning(f"⚠️ The uploaded file is missing these columns: {', '.join(missing_columns)}")
+                    st.info("You can still view the data, but classification and mobility analysis may not work correctly.")
+                
+                st.session_state.df = df
                 st.success("✅ File uploaded successfully!")
+                
             except Exception as e:
                 st.error(f"Error loading file: {str(e)}")
         
@@ -233,81 +263,121 @@ def main():
                 st.error("❌ Model file is missing. ARG Classification cannot proceed.")
             else:
                 st.header("ARG Classification Results")
+                # Check if required columns exist before extraction
                 features = extract_features(st.session_state.df)
-                predictions = model.predict(features)
-                results_df = st.session_state.df.copy()
-                results_df['Predictions'] = pd.Series(predictions).map({1: '🟢 ARG', 0: '🔴 Non-ARG'})
+                
+                if features is not None:
+                    # Only proceed with prediction if features are available
+                    predictions = model.predict(features)
+                    results_df = st.session_state.df.copy()
+                    results_df['Predictions'] = pd.Series(predictions).map({1: '🟢 ARG', 0: '🔴 Non-ARG'})
 
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    st.dataframe(
-                        results_df[["Node", "Predictions"]],
-                        use_container_width=True
+                    col1, col2 = st.columns([2, 1])
+                    with col1:
+                        # Ensure 'Node' column exists, if not use index
+                        if 'Node' in results_df.columns:
+                            display_df = results_df[["Node", "Predictions"]]
+                        else:
+                            display_df = pd.DataFrame({
+                                "Index": range(len(results_df)),
+                                "Predictions": results_df["Predictions"]
+                            })
+                        
+                        st.dataframe(display_df, use_container_width=True)
+
+                    with col2:
+                        classification_counts = results_df['Predictions'].value_counts().reset_index()
+                        classification_counts.columns = ['Category', 'Count']
+                        fig = px.pie(
+                            classification_counts,
+                            names='Category',
+                            values='Count',
+                            title="ARG Classification Distribution",
+                            color='Category',
+                            color_discrete_map={'🟢 ARG': '#3498DB', '🔴 Non-ARG': '#E74C3C'}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+                    csv = results_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        "📥 Download Classification Results",
+                        csv,
+                        "arg_predictions.csv",
+                        "text/csv"
                     )
-
-                with col2:
-                    classification_counts = results_df['Predictions'].value_counts().reset_index()
-                    classification_counts.columns = ['Category', 'Count']
-                    fig = px.pie(
-                        classification_counts,
-                        names='Category',
-                        values='Count',
-                        title="ARG Classification Distribution",
-                        color='Category',
-                        color_discrete_map={'🟢 ARG': '#3498DB', '🔴 Non-ARG': '#E74C3C'}
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-                csv = results_df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    "📥 Download Classification Results",
-                    csv,
-                    "arg_predictions.csv",
-                    "text/csv"
-                )
+                else:
+                    st.error("❌ Cannot perform classification due to missing required columns.")
+                    st.info("Please ensure your dataset includes all required columns or add them in the 'Add New Data' tab.")
 
     with tab3:
         if st.session_state.df.empty:
             st.warning("⚠️ Please upload or add data first.")
         else:
             st.header("Mobility Analysis Results")
-            analyzer = ARGMobilityAnalyzer(st.session_state.df)
-            results = analyzer.analyze_mobility()
+            
+            # Check if required columns exist before analysis
+            required_mobility_columns = ['CommunicationEfficiency', 'Degree', 'BetweennessCentrality', 
+                                        'ClusteringCoefficient', 'PositiveTopologyCoefficient', 'NeighborhoodConnectivity']
+            
+            missing = [col for col in required_mobility_columns if col not in st.session_state.df.columns]
+            
+            if missing:
+                st.error(f"❌ Cannot perform mobility analysis. Missing columns: {', '.join(missing)}")
+                st.info("Please ensure your dataset includes all required columns or add them in the 'Add New Data' tab.")
+            else:
+                analyzer = ARGMobilityAnalyzer(st.session_state.df)
+                results = analyzer.analyze_mobility()
 
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                st.dataframe(
-                    results[["Node", "mobility_potential", "mobility_category"]],
-                    use_container_width=True
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    # Ensure 'Node' column exists
+                    if 'Node' in results.columns:
+                        display_df = results[["Node", "mobility_potential", "mobility_category"]]
+                    else:
+                        display_df = results[["mobility_potential", "mobility_category"]].copy()
+                        display_df.insert(0, "Index", range(len(display_df)))
+                    
+                    st.dataframe(display_df, use_container_width=True)
+
+                with col2:
+                    mobility_counts = results['mobility_category'].value_counts().reset_index()
+                    mobility_counts.columns = ['Mobility Category', 'Count']
+                    fig = px.bar(
+                        mobility_counts,
+                        x='Mobility Category',
+                        y='Count',
+                        title="Mobility Category Distribution",
+                        color='Mobility Category',
+                        color_discrete_map={
+                            '🔴 Low Mobility': '#2ECC71',
+                            '🟡 Moderate Mobility': '#F1C40F',
+                            '🟢 High Mobility': '#E74C3C'
+                        }
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                csv = results.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "📥 Download Mobility Analysis",
+                    csv,
+                    "mobility_analysis.csv",
+                    "text/csv"
                 )
-
-            with col2:
-                mobility_counts = results['mobility_category'].value_counts().reset_index()
-                mobility_counts.columns = ['Mobility Category', 'Count']
-                fig = px.bar(
-                    mobility_counts,
-                    x='Mobility Category',
-                    y='Count',
-                    title="Mobility Category Distribution",
-                    color='Mobility Category',
-                    color_discrete_map={
-                        '🔴 Low Mobility': '#2ECC71',
-                        '🟡 Moderate Mobility': '#F1C40F',
-                        '🟢 High Mobility': '#E74C3C'
-                    }
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-            csv = results.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "📥 Download Mobility Analysis",
-                csv,
-                "mobility_analysis.csv",
-                "text/csv"
-            )
 
     with tab4:
         st.header("Add New Data")
+        
+        # Add a template download option
+        template_df = pd.DataFrame(columns=list(COLUMN_DESCRIPTIONS.keys()))
+        template_csv = template_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "📥 Download Template CSV",
+            template_csv,
+            "arg_template.csv",
+            "text/csv",
+            help="Download a template CSV with all required columns"
+        )
+        
         with st.form("add_data_form"):
             new_data = {}
             for col in COLUMN_DESCRIPTIONS.keys():
