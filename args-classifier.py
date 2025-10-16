@@ -439,8 +439,50 @@ def main():
                         weight_df = pd.DataFrame(weight_impacts)
                         fig2 = px.scatter(weight_df, x='Weight', y='Change %', color='Feature',
                                         title="Impact of Weight Variations on Results",
-                                        trendline="lowess")
+                                        opacity=0.6)
                         st.plotly_chart(fig2, use_container_width=True)
+                        
+                        # Detailed iteration table
+                        st.subheader("Detailed Iteration Results")
+                        
+                        # Create detailed table with all weights
+                        detailed_results = []
+                        for result in sensitivity_data['sensitivity_results']:
+                            row = {
+                                'Iteration': result['iteration'],
+                                'Category Changes': result['category_changes'],
+                                'Change %': f"{result['change_percentage']:.2f}%",
+                                'CE Weight': f"{result['weights']['CommunicationEfficiency']:.4f}",
+                                'Degree Weight': f"{result['weights']['Degree']:.4f}",
+                                'BC Weight': f"{result['weights']['BetweennessCentrality']:.4f}",
+                                'CC Weight': f"{result['weights']['ClusteringCoefficient']:.4f}",
+                                'PTC Weight': f"{result['weights']['PositiveTopologyCoefficient']:.4f}",
+                                'NC Weight': f"{result['weights']['NeighborhoodConnectivity']:.4f}"
+                            }
+                            detailed_results.append(row)
+                        
+                        detailed_df = pd.DataFrame(detailed_results)
+                        
+                        st.markdown("""
+                        **Column Legend:**
+                        - **CE**: CommunicationEfficiency
+                        - **BC**: BetweennessCentrality  
+                        - **CC**: ClusteringCoefficient
+                        - **PTC**: PositiveTopologyCoefficient
+                        - **NC**: NeighborhoodConnectivity
+                        """)
+                        
+                        st.dataframe(detailed_df, use_container_width=True, height=400)
+                        
+                        # Download option for detailed results
+                        detailed_csv = detailed_df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            "📥 Download Detailed Iteration Results",
+                            detailed_csv,
+                            "sensitivity_analysis_detailed.csv",
+                            "text/csv",
+                            help="Download complete iteration results with all weights"
+                        )
                         
                         # Statistical summary
                         st.subheader("Statistical Summary")
