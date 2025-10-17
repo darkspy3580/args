@@ -425,22 +425,188 @@ def main():
                                          nbins=20)
                         st.plotly_chart(fig, use_container_width=True)
                         
-                        # Weight variance impact
+                        # Enhanced Weight Impact Visualizations
                         st.subheader("Weight Impact Analysis")
-                        weight_impacts = []
+                        
+                        # Calculate average weights for stable vs unstable
+                        stable_iterations = [r for r in sensitivity_data['sensitivity_results'] if r['change_percentage'] < 10]
+                        unstable_iterations = [r for r in sensitivity_data['sensitivity_results'] if r['change_percentage'] >= 30]
+                        
+                        # Prepare data for comparison
+                        baseline_weights = {
+                            'CommunicationEfficiency': 0.20,
+                            'Degree': 0.15,
+                            'BetweennessCentrality': 0.20,
+                            'ClusteringCoefficient': 0.15,
+                            'PositiveTopologyCoefficient': 0.15,
+                            'NeighborhoodConnectivity': 0.15
+                        }
+                        
+                        # Calculate averages
+                        comparison_data = []
+                        for feature in baseline_weights.keys():
+                            baseline = baseline_weights[feature]
+                            
+                            if stable_iterations:
+                                stable_avg = sum(r['weights'][feature] for r in stable_iterations) / len(stable_iterations)
+                            else:
+                                stable_avg = baseline
+                                
+                            if unstable_iterations:
+                                unstable_avg = sum(r['weights'][feature] for r in unstable_iterations) / len(unstable_iterations)
+                            else:
+                                unstable_avg = baseline
+                            
+                            # Shortened feature names for better display
+                            feature_short = feature.replace('CommunicationEfficiency', 'CommEfficiency')\
+                                                  .replace('BetweennessCentrality', 'Betweenness')\
+                                                  .replace('ClusteringCoefficient', 'Clustering')\
+                                                  .replace('PositiveTopologyCoefficient', 'PosTopology')\
+                                                  .replace('NeighborhoodConnectivity', 'Neighborhood')
+                            
+                            comparison_data.extend([
+                                {'Feature': feature_short, 'Type': 'Baseline', 'Weight': baseline},
+                                {'Feature': feature_short, 'Type': 'Stable Avg', 'Weight': stable_avg},
+                                {'Feature': feature_short, 'Type': 'Unstable Avg', 'Weight': unstable_avg}
+                            ])
+                        
+                        comparison_df = pd.DataFrame(comparison_data)
+                        
+                        # Grouped bar chart
+                        fig_comparison = px.bar(comparison_df, x='Feature', y='Weight', color='Type',
+                                              barmode='group',
+                                              title="Weight Comparison: Baseline vs Stable vs Unstable Iterations",
+                                              color_discrete_map={
+                                                  'Baseline': '#3498DB',
+                                                  'Stable Avg': '#2ECC71',
+                                                  'Unstable Avg': '#E74C3C'
+                                              },
+                                              labels={'Weight': 'Weight Value', 'Feature': 'Network Feature'})
+                        fig_comparison.update_layout(height=500)
+                        st.plotly_chart(fig_comparison, use_container_width=True)
+                        
+                        # Box plot for weight distributions
+                        st.subheader("Weight Distribution by Stability")
+                        
+                        weight_dist_data = []
                         for result in sensitivity_data['sensitivity_results']:
-                            for key, value in result['weights'].items():
-                                weight_impacts.append({
-                                    'Feature': key,
-                                    'Weight': value,
-                                    'Change %': result['change_percentage']
+                            stability = 'Stable' if result['change_percentage'] < 10 else \
+                                       ('Unstable' if result['change_percentage'] >= 30 else 'Moderate')
+                            for feature, weight in result['weights'].items():
+                                feature_short = feature.replace('CommunicationEfficiency', 'CommEfficiency')\
+                                                      .replace('BetweennessCentrality', 'Betweenness')\
+                                                      .replace('ClusteringCoefficient', 'Clustering')\
+                                                      .replace('PositiveTopologyCoefficient', 'PosTopology')\
+                                                      .replace('NeighborhoodConnectivity', 'Neighborhood')
+                                weight_dist_data.append({
+                                    'Feature': feature_short,
+                                    'Weight': weight,
+                                    'Stability': stability
                                 })
                         
-                        weight_df = pd.DataFrame(weight_impacts)
-                        fig2 = px.scatter(weight_df, x='Weight', y='Change %', color='Feature',
-                                        title="Impact of Weight Variations on Results",
-                                        opacity=0.6)
-                        st.plotly_chart(fig2, use_container_width=True)
+                        weight_dist_df = pd.DataFrame(weight_dist_data)
+                        
+                        fig_box = px.box(weight_dist_df, x='Feature', y='Weight', color='Stability',
+                                        title="Weight Ranges by Stability Category",
+                                        color_discrete_map={
+                                            'Stable': '#2ECC71',
+                                            'Moderate': '#F1C40F',
+                                            'Unstable': '#E74C3C'
+                                        },
+                                        labels={'Weight': 'Weight Value', 'Feature': 'Network Feature'})
+                        fig_box.update_layout(height=500)
+                        st.plotly_chart(fig_box, use_container_width=True)
+                        
+                        # Heatmap of weight sensitivity
+                        st.subheader("Feature Sensitivity Heatmap")
+                        
+                        # Calculate correlation between weights and change percentage
+                        heatmap_data = []
+                        features_list = list(baseline_weights.keys())
+                        for feature in features_list:
+                            weights = [r['weights'][feature] for r in sensitivity_data['sensitivity_results']]
+                            changes = [r['change_percentage'] for r in sensitivity_data['sensitivity_results']]
+                            correlation = np.corrcoef(weights, changes)[0, 1]
+                            
+                            # Calculate average weight in stable vs unstable
+                            if stable_iterations:
+                                stable_avg = sum(r['weights'][feature] for r in stable_iterations) / len(stable_iterations)
+                            else:
+                                stable_avg = baseline_weights[feature]
+                            
+                            if unstable_iterations:
+                                unstable_avg = sum(r['weights'][feature] for r in unstable_iterations) / len(unstable_iterations)
+                            else:
+                                unstable_avg = baseline_weights[feature]
+                            
+                            sensitivity = abs(unstable_avg - stable_avg)
+                            
+                            feature_short = feature.replace('CommunicationEfficiency', 'CommEfficiency')\
+                                                  .replace('BetweennessCentrality', 'Betweenness')\
+                                                  .replace('ClusteringCoefficient', 'Clustering')\
+                                                  .replace('PositiveTopologyCoefficient', 'PosTopology')\
+                                                  .replace('NeighborhoodConnectivity', 'Neighborhood')
+                            
+                            heatmap_data.append({
+                                'Feature': feature_short,
+                                'Correlation with Change': correlation,
+                                'Sensitivity Score': sensitivity,
+                                'Baseline Weight': baseline_weights[feature]
+                            })
+                        
+                        heatmap_df = pd.DataFrame(heatmap_data)
+                        
+                        # Create color-coded table
+                        st.markdown("### Sensitivity Metrics by Feature")
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            fig_sensitivity = px.bar(heatmap_df, x='Feature', y='Sensitivity Score',
+                                                    title="Feature Sensitivity Score (Higher = More Sensitive)",
+                                                    color='Sensitivity Score',
+                                                    color_continuous_scale='Reds',
+                                                    labels={'Sensitivity Score': 'Sensitivity'})
+                            fig_sensitivity.add_hline(y=0.05, line_dash="dash", line_color="orange",
+                                                     annotation_text="Critical Threshold (0.05)")
+                            st.plotly_chart(fig_sensitivity, use_container_width=True)
+                        
+                        with col2:
+                            fig_corr = px.bar(heatmap_df, x='Feature', y='Correlation with Change',
+                                            title="Correlation: Weight vs Change %",
+                                            color='Correlation with Change',
+                                            color_continuous_scale='RdYlGn_r',
+                                            labels={'Correlation with Change': 'Correlation'})
+                            st.plotly_chart(fig_corr, use_container_width=True)
+                        
+                        # Summary interpretation
+                        st.info("""
+                        **📖 How to Read These Charts:**
+                        
+                        1. **Weight Comparison Chart**: Shows how weights differ between baseline, stable iterations, and unstable iterations
+                           - Green bars close to blue = Stable weight range
+                           - Red bars far from blue = Unstable weight range
+                        
+                        2. **Box Plot**: Shows the full range of weights tested for each feature by stability
+                           - Green boxes = Weights that produced stable results
+                           - Red boxes = Weights that caused instability
+                        
+                        3. **Sensitivity Score**: Higher bars = Features more sensitive to weight changes
+                           - Above orange line (0.05) = High sensitivity, needs careful weight selection
+                        
+                        4. **Correlation Chart**: Shows if increasing a weight increases instability
+                           - Positive correlation = Higher weight causes more changes
+                           - Negative correlation = Lower weight causes more changes
+                        """)
+                        
+                        # Display detailed metrics table
+                        st.dataframe(
+                            heatmap_df.style.background_gradient(subset=['Sensitivity Score'], cmap='Reds')
+                                           .background_gradient(subset=['Correlation with Change'], cmap='RdYlGn_r')
+                                           .format({'Sensitivity Score': '{:.4f}', 
+                                                   'Correlation with Change': '{:.3f}',
+                                                   'Baseline Weight': '{:.2f}'}),
+                            use_container_width=True
+                        )
                         
                         # Detailed iteration table
                         st.subheader("Detailed Iteration Results")
