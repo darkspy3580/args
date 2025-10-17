@@ -598,13 +598,27 @@ def main():
                            - Negative correlation = Lower weight causes more changes
                         """)
                         
-                        # Display detailed metrics table
+                        # Display detailed metrics table (without styling that requires matplotlib)
+                        st.subheader("Feature Sensitivity Metrics")
+                        
+                        # Add status indicators
+                        heatmap_df['Sensitivity Level'] = heatmap_df['Sensitivity Score'].apply(
+                            lambda x: '🔴 High' if x > 0.05 else '🟢 Low'
+                        )
+                        heatmap_df['Correlation Type'] = heatmap_df['Correlation with Change'].apply(
+                            lambda x: '🔴 Positive' if x > 0.1 else ('🟢 Negative' if x < -0.1 else '🟡 Neutral')
+                        )
+                        
+                        # Reorder columns for better display
+                        display_cols = ['Feature', 'Baseline Weight', 'Sensitivity Score', 'Sensitivity Level', 
+                                       'Correlation with Change', 'Correlation Type']
+                        
                         st.dataframe(
-                            heatmap_df.style.background_gradient(subset=['Sensitivity Score'], cmap='Reds')
-                                           .background_gradient(subset=['Correlation with Change'], cmap='RdYlGn_r')
-                                           .format({'Sensitivity Score': '{:.4f}', 
-                                                   'Correlation with Change': '{:.3f}',
-                                                   'Baseline Weight': '{:.2f}'}),
+                            heatmap_df[display_cols].style.format({
+                                'Sensitivity Score': '{:.4f}',
+                                'Correlation with Change': '{:.3f}',
+                                'Baseline Weight': '{:.2f}'
+                            }),
                             use_container_width=True
                         )
                         
